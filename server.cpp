@@ -10,7 +10,8 @@
 #include <mutex>
 #define MAX_LEN 200
 #define NUM_COLORS 6
-
+#define PORT 8080
+#define BUFFER_SIZE 4096
 using namespace std;
 
 struct terminal
@@ -19,7 +20,9 @@ struct terminal
 	string name;
 	int socket;
 	thread th;
+    string channel;
 };
+
 
 vector<terminal> clients;
 string def_col="\033[0m";
@@ -28,16 +31,30 @@ int seed=0;
 mutex cout_mtx,clients_mtx;
 
 string color(int code);
+
 void set_name(int id, char name[]);
+
+void set_channel(int id, char channel[]);
+
 void shared_print(string str, bool endLine);
+
 int broadcast_message(string message, int sender_id);
+
 int broadcast_message(int num, int sender_id);
+
 void end_connection(int id);
+
 void handle_client(int client_socket, int id);
+
+int get_client_index(int id);
 
 int main()
 {
 	int server_socket;
+
+    cout << "Server is running on port " << PORT << endl;
+    cout<< "Creating socket..." << endl;
+
 	if((server_socket=socket(AF_INET,SOCK_STREAM,0))==-1)
 	{
 		perror("socket: ");
@@ -46,7 +63,7 @@ int main()
 
 	struct sockaddr_in server;
 	server.sin_family=AF_INET;
-	server.sin_port=htons(10000);
+	server.sin_port=htons(PORT);
 	server.sin_addr.s_addr=INADDR_ANY;
 	bzero(&server.sin_zero,0);
 
@@ -69,7 +86,8 @@ int main()
 	cout<<colors[NUM_COLORS-1]<<"\n\t  ====== Welcome to the chat-room ======   "<<endl<<def_col;
 
 	while(1)
-	{
+    {
+        cout << "Waiting for connections..." << endl;
 		if((client_socket=accept(server_socket,(struct sockaddr *)&client,&len))==-1)
 		{
 			perror("accept error: ");
@@ -83,6 +101,7 @@ int main()
 
 	for(int i=0; i<clients.size(); i++)
 	{
+        cout << "What is this funciont doing?" << endl;
 		if(clients[i].th.joinable())
 			clients[i].th.join();
 	}
@@ -108,6 +127,17 @@ void set_name(int id, char name[])
 	}	
 }
 
+void set_channel(int id, char channel[])
+{
+    for(int i=0; i<clients.size(); i++)
+    {
+            if(clients[i].id==id)	
+            {
+                clients[i].channel=string(channel);
+            }
+    }	
+}
+
 // For synchronisation of cout statements
 void shared_print(string str, bool endLine=true)
 {	
@@ -117,14 +147,25 @@ void shared_print(string str, bool endLine=true)
 			cout<<endl;
 }
 
+int get_client_index(int id)
+{
+    for(int i=0; i<clients.size(); i++)
+    {
+        if(clients[i].id==id)
+            return i;
+    }
+}
+
 // Broadcast message to all clients except the sender
 int broadcast_message(string message, int sender_id)
 {
 	char temp[MAX_LEN];
 	strcpy(temp,message.c_str());
+    int index = get_client_index(sender_id);
+    string channel = clients[index].channel;
 	for(int i=0; i<clients.size(); i++)
 	{
-		if(clients[i].id!=sender_id)
+		if(clients[i].id!=sender_id && clients[i].channel == channel)
 		{
 			send(clients[i].socket,temp,sizeof(temp),0);
 		}
@@ -134,9 +175,11 @@ int broadcast_message(string message, int sender_id)
 // Broadcast a number to all clients except the sender
 int broadcast_message(int num, int sender_id)
 {
+    int index = get_client_index(sender_id);
+    string channel = clients[index].channel;
 	for(int i=0; i<clients.size(); i++)
 	{
-		if(clients[i].id!=sender_id)
+		if(clients[i].id!=sender_id && clients[i].channel == channel)
 		{
 			send(clients[i].socket,&num,sizeof(num),0);
 		}
@@ -160,9 +203,14 @@ void end_connection(int id)
 
 void handle_client(int client_socket, int id)
 {
-	char name[MAX_LEN],str[MAX_LEN];
+	char name[MAX_LEN],str[MAX_LEN], channel[MAX_LEN];
+    // Recieve the name of the client
 	recv(client_socket,name,sizeof(name),0);
-	set_name(id,name);	
+	set_name(id,name);
+    // Recieve the channel of the client
+    recv(client_socket,channel,sizeof(channel),0);
+    set_channel(id,channel);
+
 
 	// Display welcome message
 	string welcome_message=string(name)+string(" has joined");

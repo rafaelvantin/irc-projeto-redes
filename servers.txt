@@ -1,0 +1,2 @@
+main.server 127.0.0.1
+local.server 127.0.0.1
