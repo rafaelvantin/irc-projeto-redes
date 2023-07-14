@@ -48,6 +48,9 @@ void handle_client(int client_socket, int id);
 
 int get_client_index(int id);
 
+void check_name(int client_socket, char name[]);
+
+
 int main()
 {
 	int server_socket;
@@ -101,7 +104,6 @@ int main()
 
 	for(int i=0; i<clients.size(); i++)
 	{
-        cout << "What is this funciont doing?" << endl;
 		if(clients[i].th.joinable())
 			clients[i].th.join();
 	}
@@ -120,7 +122,7 @@ void set_name(int id, char name[])
 {
 	for(int i=0; i<clients.size(); i++)
 	{
-			if(clients[i].id==id)	
+			if(clients[i].socket==id)	
 			{
 				clients[i].name=string(name);
 			}
@@ -133,6 +135,7 @@ void set_channel(int id, char channel[])
     {
             if(clients[i].id==id)	
             {
+                cout << "Setting channel to " << channel << endl;
                 clients[i].channel=string(channel);
             }
     }	
@@ -167,6 +170,9 @@ int broadcast_message(string message, int sender_id)
 	{
 		if(clients[i].id!=sender_id && clients[i].channel == channel)
 		{
+            cout << "Sending message to " << clients[i].name << endl;
+            cout << "Message: " << message << endl;
+            cout << "Channel: " << channel << endl;
 			send(clients[i].socket,temp,sizeof(temp),0);
 		}
 	}		
@@ -204,9 +210,10 @@ void end_connection(int id)
 void handle_client(int client_socket, int id)
 {
 	char name[MAX_LEN],str[MAX_LEN], channel[MAX_LEN];
-    // Recieve the name of the client
-	recv(client_socket,name,sizeof(name),0);
-	set_name(id,name);
+
+    recv(client_socket,name,sizeof(name),0);
+    check_name(client_socket,name);
+
     // Recieve the channel of the client
     recv(client_socket,channel,sizeof(channel),0);
     set_channel(id,channel);
@@ -240,4 +247,35 @@ void handle_client(int client_socket, int id)
 		broadcast_message(string(str),id);
 		shared_print(color(id)+name+" : "+def_col+str);		
 	}	
+}
+
+void check_name(int client_socket, char name[]){
+
+
+    do{
+        bool taken = false;
+        for(int i=0; i<clients.size(); i++)
+        {
+            if(clients[i].name==string(name))
+            {
+                taken = true;
+                break;
+            }
+        }
+        if(!taken)
+            break;
+        else
+        {
+            string message = "#NAME_TAKEN";
+            send(client_socket,message.c_str(),sizeof(message),0);
+            char newName[MAX_LEN];
+
+            recv(client_socket,newName,sizeof(newName),0);
+            strcpy(name,newName);
+            
+        }
+
+    }while(1);
+    send(client_socket,"#NAME_OK",sizeof("#NAME_OK"),0);
+	set_name(client_socket,name);
 }
