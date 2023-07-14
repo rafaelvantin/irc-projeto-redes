@@ -231,7 +231,7 @@ void handle_client(int client_socket, int id)
 		int bytes_received=recv(client_socket,str,sizeof(str),0);
 		if(bytes_received<=0)
 			return;
-		if(strcmp(str,"#exit")==0)
+		if(strcmp(str,"/quit")==0)
 		{
 			// Display leaving message
 			string message=string(name)+string(" has left");		
