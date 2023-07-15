@@ -28,6 +28,7 @@ string color(int code);
 void eraseText(int cnt);
 void send_message(int client_socket);
 void recv_message(int client_socket);
+void print_help();
 
 int main()
 {
@@ -43,7 +44,7 @@ int main()
 
     cout << "Socket created successfully" << endl;
     while(1){
-        cout << "Type /connect <ip> to connect to a server or /quit to finish the connection" << endl;
+        cout << "Type /connect <ip> to connect to a server or /quit to finish the connection or /help to see the commands" << endl;
         getline(cin,command);
         
         if(command.substr(0,8)=="/connect")
@@ -56,6 +57,11 @@ int main()
             cout << "Quitting..." << endl;
             return 0;
         }
+		if(command=="/help")
+		{
+			print_help();
+			continue;
+		}
     }
 	struct sockaddr_in client;
 	client.sin_family=AF_INET;
@@ -80,8 +86,6 @@ int main()
         //Check if name is already taken
         char response[MAX_LEN];
         recv(client_socket,response,sizeof(response),0);
-
-        cout << response << endl;
     	fflush(stdout);
 
         if(strcmp(response,"#NAME_TAKEN")==0){
@@ -159,14 +163,7 @@ void send_message(int client_socket)
             return;
         }
         if (strcmp(str,"/help") == 0){
-            //Read the help file
-            ifstream helpFile;
-            helpFile.open("help.txt");
-            string line;
-            while(getline(helpFile,line)){
-                cout << line << endl;
-            }
-            helpFile.close();
+            print_help();
             continue;
 
         }
@@ -204,4 +201,14 @@ void recv_message(int client_socket)
 		cout<<colors[1]<<"You : "<<def_col;
 		fflush(stdout);
 	}	
+}
+
+void print_help(){
+	ifstream helpFile;
+	helpFile.open("help.txt");
+	string line;
+	while(getline(helpFile,line)){
+		cout << line << endl;
+	}
+	helpFile.close();
 }
