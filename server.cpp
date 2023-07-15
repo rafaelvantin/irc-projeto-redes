@@ -36,6 +36,7 @@ struct terminal
 	int socket;
 	thread th;
     string channel;
+	bool isMute;
 };
 
 
@@ -160,13 +161,13 @@ int main()
 		exit(-1);
 	}
 
+	// Bind socket fd to socket address and make it listen
+
 	struct sockaddr_in server;
 	server.sin_family = AF_INET;
 	server.sin_port = htons(PORT);
 	server.sin_addr.s_addr = INADDR_ANY;
 	bzero(&server.sin_zero, 0);
-
-	// Bind socket fd to socket address and make it listen
 
 	if((bind(server_socket, (struct sockaddr *)&server,sizeof(struct sockaddr_in))) == -1)
 	{
@@ -201,7 +202,7 @@ int main()
 		seed++;
 		thread t(handle_client, client_socket, seed);
 		lock_guard<mutex> guard(clients_mtx);
-		clients.push_back({seed, string("Anonymous"), client_socket, (move(t))});
+		clients.push_back({seed, string("Anonymous"), client_socket, (move(t)), "", false});
 	}
 
 	for(int i = 0; i < clients.size(); i++)
@@ -223,7 +224,7 @@ string color(int code)
 void set_name(int id, char name[])
 {
 	int client_index = get_client_index(id);
-	client[client_index].name = string(name);
+	clients[client_index].name = string(name);
 }
 
 int exisiting_channel(string channel)
@@ -256,7 +257,7 @@ void set_channel(int id, char channel[])
 	else
 	{
 		cout << "Setting channel to " << channel << endl;
-		client[client_index].channel = string(channel);
+		clients[client_index].channel = string(channel);
 	}
 }
 
@@ -272,12 +273,34 @@ void shared_print(string str, bool endLine = true)
 
 int get_client_index(int id)
 {
-    for(int i=0; i < clients.size(); i++)
+    for(int i = 0; i < clients.size(); i++)
     {
-        if(clients[i].id==id)
+        if(clients[i].id == id)
             return i;
     }
 	return -1;
+}
+
+int get_client_by_name(string name)
+{
+    for(int i = 0; i < clients.size(); i++)
+    {
+        if(clients[i].name == name)
+            return i;
+    }
+	return -1;
+
+}
+
+int get_channel_index(string name)
+{
+    for(int i = 0; i < channels.size(); i++)
+    {
+        if(channels[i].name == name)
+            return i;
+    }
+	return -1;
+
 }
 
 // Broadcast message to all clients except the sender
@@ -318,6 +341,67 @@ void broadcast_message(int num, int sender_id)
 	}		
 }
 
+bool authAdmin(int id)
+{
+	int client_index = get_client_index(id);
+	int channel_index = get_channel_index(clients[client_index].channel);
+
+	cout << id << " " << channels[channel_index].admin << endl;
+
+	if(channels[channel_index].admin != id)
+	{
+		send_message(id, "Você não tem permissão para mutar!");
+		return false;
+	}
+
+	return true;
+}
+
+void mute(int id, string name)
+{
+	int client_index = get_client_by_name(name);
+
+	if(client_index == -1)
+	{
+		send_message(id, "Nenhum usuário encontrado com esse nome.");
+	}
+	else
+	{
+		if(clients[id].isMute)
+		{
+			send_message(id, "Usuário já está mutado.");
+		}
+		else
+		{
+			clients[id].isMute = true;
+			send_message(id, "Usuário mutado.");
+		}
+	}
+}
+
+void unmute(int id, string name)
+{
+	int client_index = get_client_by_name(name);
+
+	if(client_index == -1)
+	{
+		send_message(id, "Nenhum usuário encontrado com esse nome.");
+	}
+	else
+	{
+		if(!clients[id].isMute)
+		{
+			send_message(id, "Usuário já está desmutado.");
+		}
+		else
+		{
+			clients[id].isMute = false;
+			send_message(id, "Usuário desmutado.");
+		}
+	}
+}
+
+
 void end_connection(int id)
 {
 	for(int i = 0; i < clients.size(); i++)
@@ -350,6 +434,8 @@ void handle_client(int client_socket, int id)
 	broadcast_message(id, id);								
 	broadcast_message(welcome_message, id);	
 	shared_print(color(id) + welcome_message + def_col);
+
+	int client_index = get_client_index(id);
 	
 	while(1)
 	{
@@ -372,9 +458,30 @@ void handle_client(int client_socket, int id)
 				return;
 			}
 
-			if(strcmp(str,"/ping") == 0)
+			if(strcmp(str, "/ping") == 0)
 			{
 				send_message(id, "pong");
+				continue;
+			}
+
+			if(string(str).substr(0,5) == "/mute")
+			{
+				cout << "A1\n";
+				if(!authAdmin(id))
+					continue;
+
+				cout << "A4\n";
+				mute(id, string(str).substr(6));
+				cout << "A5\n";
+				continue;
+			}
+
+			if(string(str).substr(0,7) == "/unmute")
+			{
+				if(!authAdmin(id))
+					continue;
+
+				unmute(id, string(str).substr(8));
 				continue;
 			}
 
@@ -417,6 +524,12 @@ void handle_client(int client_socket, int id)
 
 		}
 
+		if(clients[client_index].isMute)
+		{
+			send_message(id, "Você está silenciado.");
+			continue;
+		}
+
 		broadcast_message(string(name), id);					
 		broadcast_message(id, id);		
 		broadcast_message(string(str), id);
@@ -457,12 +570,16 @@ void send_message(int id, string message)
 
 	char temp[MAX_LEN];
 	strcpy(temp, message.c_str());
-	
+
+	// Send origin 
 	string server = "Server";
 	send(client_socket, server.c_str(), sizeof(server), 0);
 	
+	// Send msg color
 	int num = 0;
 	send(client_socket, &num, sizeof(num), 0);
+	
+	// Send msg
 	send(client_socket, temp, sizeof(temp), 0);
 }
 
