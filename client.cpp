@@ -9,19 +9,19 @@
 #include <thread>
 #include <signal.h>
 #include <mutex>
+
 #define MAX_LEN 200
 #define NUM_COLORS 6
 #define PORT 8080
 #define BUFFER_SIZE 4096
 
-
 using namespace std;
 
-bool exit_flag=false;
+bool exit_flagv=vfalse;
 thread t_send, t_recv;
 int client_socket;
-string def_col="\033[0m";
-string colors[]={"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
+string def_col = "\033[0m";
+string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
 
 void catch_ctrl_c(int signal);
 string color(int code);
