@@ -25,9 +25,10 @@ string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "
 
 void catch_ctrl_c(int signal);
 string color(int code);
-int eraseText(int cnt);
+void eraseText(int cnt);
 void send_message(int client_socket);
 void recv_message(int client_socket);
+void print_help();
 
 int main()
 {
@@ -43,7 +44,7 @@ int main()
 
     cout << "Socket created successfully" << endl;
     while(1){
-        cout << "Type /connect <ip> to connect to a server or /quit to finish the connection" << endl;
+        cout << "Type /connect <ip> to connect to a server or /quit to finish the connection or /help to see the commands" << endl;
         getline(cin,command);
         
         if(command.substr(0,8)=="/connect")
@@ -56,6 +57,11 @@ int main()
             cout << "Quitting..." << endl;
             return 0;
         }
+		if(command=="/help")
+		{
+			print_help();
+			continue;
+		}
     }
 	struct sockaddr_in client;
 	client.sin_family=AF_INET;
@@ -70,11 +76,27 @@ int main()
 		exit(-1);
 	}
 	signal(SIGINT, catch_ctrl_c);
-	char name[MAX_LEN];
-	cout<<"Enter your name : ";
-	cin.getline(name,MAX_LEN);
-	send(client_socket,name,sizeof(name),0);
+    cout<<"Connected to server"<<endl;
+    while(1){
+	    char name[MAX_LEN];
+	    cout<<"Enter your name : ";
+	    cin.getline(name,MAX_LEN);
+	    send(client_socket,name,sizeof(name),0);
 
+        //Check if name is already taken
+        char response[MAX_LEN];
+        recv(client_socket,response,sizeof(response),0);
+    	fflush(stdout);
+
+        if(strcmp(response,"#NAME_TAKEN")==0){
+            cout << "Name already taken. Please choose another name." << endl;
+            continue;
+        }
+        else{
+            cout << "Name accepted." << endl;
+            break;
+        }
+    }
     cout << "Enter the channel name: ";
     char channel[MAX_LEN];
     cin.getline(channel, MAX_LEN);
@@ -99,7 +121,7 @@ int main()
 // Handler for "Ctrl + C"
 void catch_ctrl_c(int signal) 
 {
-	char str[MAX_LEN]="#exit";
+	char str[MAX_LEN]="/quit";
 	send(client_socket,str,sizeof(str),0);
 	exit_flag=true;
 	t_send.detach();
@@ -114,7 +136,7 @@ string color(int code)
 }
 
 // Erase text from terminal
-int eraseText(int cnt)
+void eraseText(int cnt)
 {
 	char back_space=8;
 	for(int i=0; i<cnt; i++)
@@ -131,6 +153,20 @@ void send_message(int client_socket)
 		cout<<colors[1]<<"You : "<<def_col;
 		char str[MAX_LEN];
 		cin.getline(str,MAX_LEN);
+        if(strlen(str)==0)
+            continue;
+        if(strcmp(str,"/quit")==0)
+        {
+            exit_flag=true;
+            t_recv.detach();	
+            close(client_socket);
+            return;
+        }
+        if (strcmp(str,"/help") == 0){
+            print_help();
+            continue;
+
+        }
 		send(client_socket,str,sizeof(str),0);
 		if(strcmp(str,"#exit")==0)
 		{
@@ -165,4 +201,14 @@ void recv_message(int client_socket)
 		cout<<colors[1]<<"You : "<<def_col;
 		fflush(stdout);
 	}	
+}
+
+void print_help(){
+	ifstream helpFile;
+	helpFile.open("help.txt");
+	string line;
+	while(getline(helpFile,line)){
+		cout << line << endl;
+	}
+	helpFile.close();
 }
