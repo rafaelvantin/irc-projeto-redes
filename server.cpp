@@ -33,10 +33,12 @@ struct terminal
 {
 	int id;
 	string name;
-	int socket;
+	int socketFd;
+    struct sockaddr_in address;
 	thread th;
     string channel;
 	bool isMute;
+    bool endFlag;
 };
 
 
@@ -182,8 +184,6 @@ int main()
 	}
 
 	// Setup client connections
-
-	struct sockaddr_in client;
 	int client_socket;
 	unsigned int len = sizeof(sockaddr_in);
 
@@ -192,6 +192,8 @@ int main()
 	while(1)
     {
         cout << "Waiting for connections..." << endl;
+
+        struct sockaddr_in client;
 
 		if((client_socket = accept(server_socket, (struct sockaddr *)&client, &len)) == -1)
 		{
@@ -202,13 +204,25 @@ int main()
 		seed++;
 		thread t(handle_client, client_socket, seed);
 		lock_guard<mutex> guard(clients_mtx);
-		clients.push_back({seed, string("Anonymous"), client_socket, (move(t)), "", false});
+
+		clients.push_back({
+            seed, 
+            string("Anonymous"),
+            client_socket,
+            client,
+            (move(t)),
+            "",
+            false,
+            false
+        });
 	}
 
 	for(int i = 0; i < clients.size(); i++)
 	{
-		if(clients[i].th.joinable())
+		if(clients[i].th.joinable()) {
 			clients[i].th.join();
+            shared_print("Thread " + to_string(i) + " joined", true);
+        }
 	}
 
 	close(server_socket);
@@ -286,7 +300,7 @@ int get_client_by_name(string name)
     for(int i = 0; i < clients.size(); i++)
     {
         if(clients[i].name == name)
-            return i;
+            return clients[i].id;
     }
 	return -1;
 
@@ -319,7 +333,7 @@ void broadcast_message(string message, int sender_id)
 	{
 		if(clients[i].id != sender_id && clients[i].channel == channel)
 		{
-			send(clients[i].socket, temp, sizeof(temp), 0);
+			send(clients[i].socketFd, temp, sizeof(temp), 0);
 		}
 	}		
 }
@@ -336,7 +350,7 @@ void broadcast_message(int num, int sender_id)
 	{
 		if(clients[i].id != sender_id && clients[i].channel == channel)
 		{
-			send(clients[i].socket, &num, sizeof(num), 0);
+			send(clients[i].socketFd, &num, sizeof(num), 0);
 		}
 	}		
 }
@@ -346,61 +360,140 @@ bool authAdmin(int id)
 	int client_index = get_client_index(id);
 	int channel_index = get_channel_index(clients[client_index].channel);
 
-	cout << id << " " << channels[channel_index].admin << endl;
-
 	if(channels[channel_index].admin != id)
 	{
-		send_message(id, "Você não tem permissão para mutar!");
+		send_message(id, "You are not the admin of this channel.");
 		return false;
 	}
 
 	return true;
 }
 
-void mute(int id, string name)
+void mute(int callerId, string targetName)
 {
-	int client_index = get_client_by_name(name);
+	int targetId = get_client_by_name(targetName);
+    if(targetId == -1)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
 
-	if(client_index == -1)
+    int targetIndex = get_client_index(targetId);
+    int callerIndex = get_client_index(callerId);
+
+	if(clients[callerIndex].channel != clients[targetIndex].channel)
 	{
-		send_message(id, "Nenhum usuário encontrado com esse nome.");
+		send_message(callerId, "No user found with that name.");
 	}
 	else
 	{
-		if(clients[id].isMute)
+		if(clients[targetIndex].isMute)
 		{
-			send_message(id, "Usuário já está mutado.");
+			send_message(callerId, "User is already muted.");
 		}
 		else
 		{
-			clients[id].isMute = true;
-			send_message(id, "Usuário mutado.");
+			clients[targetIndex].isMute = true;
+			send_message(callerId, "User muted.");
 		}
 	}
 }
 
-void unmute(int id, string name)
+void unmute(int callerId, string targetName)
 {
-	int client_index = get_client_by_name(name);
+	int targetId = get_client_by_name(targetName);
+    if(targetId == -1)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
 
-	if(client_index == -1)
+    int targetIndex = get_client_index(targetId);
+    int callerIndex = get_client_index(callerId);
+
+	if(clients[callerIndex].channel != clients[targetIndex].channel)
 	{
-		send_message(id, "Nenhum usuário encontrado com esse nome.");
+		send_message(callerId, "No user found with that name.");
 	}
 	else
 	{
-		if(!clients[id].isMute)
+		if(!clients[targetIndex].isMute)
 		{
-			send_message(id, "Usuário já está desmutado.");
+			send_message(callerId, "User is already unmuted.");
 		}
 		else
 		{
-			clients[id].isMute = false;
-			send_message(id, "Usuário desmutado.");
+			clients[targetIndex].isMute = false;
+			send_message(callerId, "User unmuted.");
 		}
 	}
 }
 
+void whois(int callerId, string targetName)
+{
+    if(!authAdmin(callerId))
+        return;
+
+    int targetId = get_client_by_name(targetName);
+    if(targetId == -1)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
+
+    int targetIndex = get_client_index(targetId);
+    int callerIndex = get_client_index(callerId);
+
+    // Só mostra informações de usuários do canal do admin
+    if(clients[targetIndex].channel != clients[callerIndex].channel)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
+
+    string message = "\nName: " + clients[targetIndex].name + "\n";
+    message += "Id: " + to_string(clients[targetIndex].id) + "\n";
+    message += "Muted: ";
+    message += clients[targetIndex].isMute ? "Yes\n" : "No\n";
+    message += "IP: ";
+    message += inet_ntoa(clients[targetIndex].address.sin_addr);
+    message += "\nPort: ";
+    message += to_string(ntohs(clients[targetIndex].address.sin_port));
+
+    send_message(callerId, message);
+}
+
+void kick(int callerId, string targetName)
+{
+    if(!authAdmin(callerId))
+        return;
+
+    int targetId = get_client_by_name(targetName);
+    if(targetId == -1)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
+
+    int targetIndex = get_client_index(targetId);
+    int callerIndex = get_client_index(callerId);
+
+    // Só pode expulsar de usuários do canal do admin
+    if(clients[targetIndex].channel != clients[callerIndex].channel)
+    {
+        send_message(callerId, "No user found with that name.");
+        return;
+    }
+
+    send_message(targetId, "You were kicked from the channel.");
+    end_connection(targetId);
+
+    string message = "User " + clients[targetIndex].name + " was kicked from the channel.";
+    broadcast_message("Server", callerId);
+    broadcast_message(0, callerId);
+    broadcast_message(message, callerId);
+    send_message(callerId, message);
+}
 
 void end_connection(int id)
 {
@@ -409,10 +502,13 @@ void end_connection(int id)
 		if(clients[i].id == id)	
 		{
 			lock_guard<mutex> guard(clients_mtx);
-			clients[i].th.detach();
-			clients.erase(clients.begin() + i);
-			close(clients[i].socket);
-			break;
+
+            clients[i].endFlag = true;
+
+            shutdown(clients[i].socketFd, SHUT_RDWR);
+            close(clients[i].socketFd);
+			
+            break;
 		}
 	}				
 }
@@ -437,15 +533,28 @@ void handle_client(int client_socket, int id)
 
 	int client_index = get_client_index(id);
 	
-	while(1)
+	while(!clients[client_index].endFlag)
 	{
 		int bytes_received = recv(client_socket, str, sizeof(str), 0);
 		
-		if(bytes_received <= 0)
-			return;
+		if(bytes_received <= 0) {
+            // Lost connection
+            if(bytes_received == 0)
+            {
+                string message = string(name) + string(" has left");		
+                broadcast_message("#NULL", id);			
+                broadcast_message(id, id);						
+                broadcast_message(message, id);
+                shared_print(color(id) + message + def_col);
+
+                end_connection(id);
+            }
+			continue;
+        }
         
 		if(str[0] == '/')
 		{
+
 			if(strcmp(str, "/quit") == 0)
 			{
 				// Display leaving message
@@ -454,8 +563,8 @@ void handle_client(int client_socket, int id)
 				broadcast_message(id, id);						
 				broadcast_message(message, id);
 				shared_print(color(id) + message + def_col);
-				end_connection(client_socket);							
-				return;
+				end_connection(id);							
+				continue;
 			}
 
 			if(strcmp(str, "/ping") == 0)
@@ -466,13 +575,10 @@ void handle_client(int client_socket, int id)
 
 			if(string(str).substr(0,5) == "/mute")
 			{
-				cout << "A1\n";
 				if(!authAdmin(id))
 					continue;
 
-				cout << "A4\n";
 				mute(id, string(str).substr(6));
-				cout << "A5\n";
 				continue;
 			}
 
@@ -519,6 +625,24 @@ void handle_client(int client_socket, int id)
 				continue;
 			}
 
+            if(string(str).substr(0,6) == "/whois")
+            {
+                string whois_name = string(str).substr(7);
+                
+                whois(id, whois_name);
+                
+                continue;
+            }
+
+            if(string(str).substr(0,5) == "/kick")
+            {
+                string kick_name = string(str).substr(6);
+                
+                kick(id, kick_name);
+                
+                continue;
+            }
+
 
 			send_message(client_socket, "Invalid command");
 
@@ -526,7 +650,7 @@ void handle_client(int client_socket, int id)
 
 		if(clients[client_index].isMute)
 		{
-			send_message(id, "Você está silenciado.");
+			send_message(id, "You are muted.");
 			continue;
 		}
 
@@ -535,12 +659,24 @@ void handle_client(int client_socket, int id)
 		broadcast_message(string(str), id);
 		shared_print(color(id) + name + " : " + def_col + str);		
 	}	
+
+    // Clean up
+
+    lock_guard<mutex> guard(clients_mtx);
+
+    // Detach thread, remove client from vector and kill thread
+
+    clients[client_index].th.detach();
+
+    clients.erase(clients.begin() + client_index);
+
+    return;
 }
 
 void check_name(int id, char name[])
 {
 	int client_index = get_client_index(id);
-	int client_socket = clients[client_index].socket; 
+	int client_socket = clients[client_index].socketFd; 
 
     do{
         if(exisiting_name(string(name)) == -1)
@@ -566,7 +702,7 @@ void check_name(int id, char name[])
 void send_message(int id, string message)
 {
 	int index = get_client_index(id);
-	int client_socket = clients[index].socket;
+	int client_socket = clients[index].socketFd;
 
 	char temp[MAX_LEN];
 	strcpy(temp, message.c_str());

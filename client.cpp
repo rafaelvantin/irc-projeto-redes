@@ -23,6 +23,7 @@ int client_socket;
 string def_col = "\033[0m";
 string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
 
+void quit_connection();
 void catch_ctrl_c(int signal);
 string color(int code);
 void eraseText(int cnt);
@@ -34,7 +35,7 @@ int main()
 {
 	// Create connection
 
-    cout << "Client is running on port " << PORT << endl;
+    //cout << "Client is running on port " << PORT << endl;
     cout << "Creating socket..." << endl;
 	
 	if((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1)
@@ -129,24 +130,34 @@ int main()
 
 	if(t_send.joinable())
 		t_send.join();
+
 	if(t_recv.joinable())
 		t_recv.join();
+
+    close(client_socket);
+
+    cout << "Quitting..." << endl;
 			
 	return 0;
+}
+
+void quit_connection()
+{
+    char str[MAX_LEN] = "/quit";
+    send(client_socket, str, sizeof(str), 0);
+    exit_flag = true;
+
+    // Shutdown socket so that recv() in recv_message() returns 0
+    // making it able to quit
+    shutdown(client_socket, SHUT_RD);
 }
 
 // Handler for "Ctrl + C"
 void catch_ctrl_c(int signal) 
 {
-	char str[MAX_LEN] = "/quit";
-	send(client_socket, str, sizeof(str), 0);
-	exit_flag = true;
-
-	t_send.detach();
-	t_recv.detach();
-
-	close(client_socket);
-	exit(signal);
+    string str = "/quit";
+    send(client_socket, str.c_str(), sizeof(str), 0);
+    quit_connection();
 }
 
 string color(int code)
@@ -167,52 +178,53 @@ void eraseText(int cnt)
 // Send message to everyone
 void send_message(int client_socket)
 {
-	while(1)
+	while(!exit_flag)
 	{
 		cout << colors[1] << "You : " << def_col;
 		
 		char str[MAX_LEN];
 		cin.getline(str, MAX_LEN);
+
+        if(cin.eof()) {
+            quit_connection();
+        }
         
 		if(strlen(str) == 0)
             continue;
+
         if(strcmp(str, "/quit") == 0)
         {
-            exit_flag = true;
-            t_recv.detach();	
-            close(client_socket);
-            return;
+            quit_connection();
         }
         if (strcmp(str, "/help") == 0){
             print_help();
             continue;
 
         }
-		if(strcmp(str,"#exit")==0)
-		{
-			exit_flag=true;
-			t_recv.detach();	
-			close(client_socket);
-			return;
-		}	
 
 		send(client_socket, str, sizeof(str), 0);
-	}		
+	}	
 }
 
 // Receive message
 void recv_message(int client_socket)
 {
-	while(1)
+	while(!exit_flag)
 	{
-		if(exit_flag)
-			return;
 		char name[MAX_LEN], str[MAX_LEN];
 		int color_code;
 		int bytes_received = recv(client_socket, name, sizeof(name), 0);
 
-		if(bytes_received<=0)
+		if(bytes_received<=0) {
+            if(bytes_received == 0) {
+                cout << "Server disconnected." << endl;
+                exit_flag = true;
+                close(client_socket);
+                exit(0);
+            }
+
 			continue;
+        }
 		
 		recv(client_socket, &color_code, sizeof(color_code), 0);
 		recv(client_socket, str, sizeof(str), 0);
