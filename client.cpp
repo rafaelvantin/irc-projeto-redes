@@ -94,10 +94,14 @@ int main()
 	    char name[MAX_LEN];
 	    cout << "Enter your name : ";
 	    cin.getline(name, MAX_LEN);
+		if(strlen(name) == 0 || strlen(name) > 50){
+			cout << "Name must be between 1 and 50 characters." << endl;
+			continue;
+		}
 	    send(client_socket, name, sizeof(name), 0);
 
         //Check if name is already taken
-        char response[MAX_LEN];
+        char response[BUFFER_SIZE];
         recv(client_socket, response, sizeof(response), 0);
     	fflush(stdout);
 
@@ -113,11 +117,11 @@ int main()
 
 	// Channel selection 
 
-    cout << "Enter the channel name: ";
+  /*  cout << "Enter the channel name: ";
     char channel[MAX_LEN];
     cin.getline(channel, MAX_LEN);
     send(client_socket, channel, sizeof(channel), 0);
-
+*/
 	// Start channel logic
 
 	cout << colors[NUM_COLORS-1] << "\n\t  ====== Welcome to the chat-room ======   " << endl << def_col;
@@ -143,7 +147,7 @@ int main()
 
 void quit_connection()
 {
-    char str[MAX_LEN] = "/quit";
+    char str[BUFFER_SIZE] = "/quit";
     send(client_socket, str, sizeof(str), 0);
     exit_flag = true;
 
@@ -182,8 +186,8 @@ void send_message(int client_socket)
 	{
 		cout << colors[1] << "You : " << def_col;
 		
-		char str[MAX_LEN];
-		cin.getline(str, MAX_LEN);
+		char str[BUFFER_SIZE];
+		cin.getline(str, BUFFER_SIZE);
 
         if(cin.eof()) {
             quit_connection();
@@ -211,7 +215,7 @@ void recv_message(int client_socket)
 {
 	while(!exit_flag)
 	{
-		char name[MAX_LEN], str[MAX_LEN];
+		char name[BUFFER_SIZE], str[BUFFER_SIZE];
 		int color_code;
 		int bytes_received = recv(client_socket, name, sizeof(name), 0);
 

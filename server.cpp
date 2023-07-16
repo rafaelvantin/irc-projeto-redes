@@ -13,6 +13,7 @@
 #define NUM_COLORS 6
 #define PORT 8080
 #define BUFFER_SIZE 4096
+#define CHANNEL_SIZE 200
 
 #define QUIT 1
 #define PING 2
@@ -148,6 +149,15 @@ int exisiting_channel(string channel);
 int exisiting_name(string name);
 
 
+
+/**
+ * @brief Check if a channel name is valid
+ * 
+ * @param channel_name 
+ * @return true 
+ * @return false 
+ */
+bool is_valid_channel_name(string channel_name);
 int main()
 {
 	// Create socket
@@ -321,7 +331,7 @@ int get_channel_index(string name)
 void broadcast_message(string message, int sender_id)
 {
 	// Prepara msg
-	char temp[MAX_LEN];
+	char temp[BUFFER_SIZE];
 	strcpy(temp, message.c_str());
     
 	// Get client channel
@@ -515,14 +525,16 @@ void end_connection(int id)
 
 void handle_client(int client_socket, int id)
 {
-	char name[MAX_LEN], str[MAX_LEN], channel[MAX_LEN];
+	char name[MAX_LEN], str[BUFFER_SIZE], channel[MAX_LEN];
 
     recv(client_socket, name, sizeof(name),0);
     check_name(id, name);
 
+
+	/*
     recv(client_socket, channel, sizeof(channel), 0);
     set_channel(id, channel);
-
+*/
 
 	// Display welcome message
 	string welcome_message = string(name) + string(" has joined");
@@ -594,6 +606,11 @@ void handle_client(int client_socket, int id)
 			if(string(str).substr(0,5) == "/join")
 			{
 				string new_channel = string(str).substr(6);
+				if(!is_valid_channel_name(new_channel))
+				{
+					send_message(id, "Invalid channel name");
+					continue;
+				}
 				set_channel(id, (char *)new_channel.c_str());
 				string welcome_message = string(name) + string(" has joined");
 				broadcast_message("#NULL", id);	
@@ -612,7 +629,11 @@ void handle_client(int client_socket, int id)
 				}
 
 				string new_name = string(str).substr(10);
-				
+				if(new_name.length() > 50)
+				{
+					send_message(id, "Name too long");
+					continue;
+				}
 				if(exisiting_name(new_name) != -1)
 				{
 					send_message(id, "Name already taken");
@@ -646,6 +667,12 @@ void handle_client(int client_socket, int id)
 
 			send_message(client_socket, "Invalid command");
 
+		}
+
+		if(clients[client_index].channel == "")
+		{
+			send_message(id, "You are not in a channel.");
+			continue;
 		}
 
 		if(clients[client_index].isMute)
@@ -704,7 +731,7 @@ void send_message(int id, string message)
 	int index = get_client_index(id);
 	int client_socket = clients[index].socketFd;
 
-	char temp[MAX_LEN];
+	char temp[BUFFER_SIZE];
 	strcpy(temp, message.c_str());
 
 	// Send origin 
@@ -729,4 +756,26 @@ int exisiting_name(string name)
 	}
 
 	return -1;
+}
+
+
+bool is_valid_channel_name(string channel_name) {
+
+    // Checks if the channel name has an invalid size.
+    if(channel_name.length() > CHANNEL_SIZE) // Checks for valid size.
+        return false;
+
+    // Checks for invalid stater characters.
+    if(channel_name[0] != '&' && channel_name[0] != '#')
+        return false;
+
+    // Checks for invalid characters on the whole channel name.
+    for(auto iter = channel_name.begin(); iter != channel_name.end(); iter++) { 
+        if(*iter == ' ' || *iter == 7 || *iter == ',')
+            return false;
+    }
+
+    // If nothing invalid was found the channel name is valid.
+    return true;
+
 }
