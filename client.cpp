@@ -208,6 +208,8 @@ void send_message(int client_socket)
 
 		send(client_socket, str, sizeof(str), 0);
 	}	
+
+    return;
 }
 
 // Receive message
@@ -217,14 +219,17 @@ void recv_message(int client_socket)
 	{
 		char name[BUFFER_SIZE], str[BUFFER_SIZE];
 		int color_code;
+
+        memset(name, 0, sizeof(name));
+        memset(str, 0, sizeof(str));
+
 		int bytes_received = recv(client_socket, name, sizeof(name), 0);
 
 		if(bytes_received<=0) {
             if(bytes_received == 0) {
-                cout << "Server disconnected." << endl;
+                //cout << "Server disconnected." << endl;
                 exit_flag = true;
-                close(client_socket);
-                exit(0);
+                pthread_cancel(t_send.native_handle());
             }
 
 			continue;
@@ -244,6 +249,8 @@ void recv_message(int client_socket)
 
 		fflush(stdout);
 	}	
+
+    return;
 }
 
 void print_help()

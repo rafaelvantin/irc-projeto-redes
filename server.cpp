@@ -732,18 +732,25 @@ void send_message(int id, string message)
 	int client_socket = clients[index].socketFd;
 
 	char temp[BUFFER_SIZE];
+    memset(temp, 0, sizeof(temp));
 	strcpy(temp, message.c_str());
+
+    int len = strlen(temp);
 
 	// Send origin 
 	string server = "Server";
-	send(client_socket, server.c_str(), sizeof(server), 0);
+    char server_name[MAX_LEN];
+    memset(server_name, 0, sizeof(server_name));
+    strcpy(server_name, server.c_str());
+    int server_len = strlen(server_name);
+	send(client_socket, server_name, server_len, 0);
 	
 	// Send msg color
 	int num = 0;
 	send(client_socket, &num, sizeof(num), 0);
 	
 	// Send msg
-	send(client_socket, temp, sizeof(temp), 0);
+	send(client_socket, temp, len, 0);
 }
 
 
