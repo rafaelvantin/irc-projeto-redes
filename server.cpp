@@ -11,7 +11,7 @@
 
 #define MAX_LEN 200
 #define NUM_COLORS 6
-#define PORT 8080
+#define PORT 3637
 #define BUFFER_SIZE 4096
 #define CHANNEL_SIZE 200
 
@@ -88,6 +88,13 @@ void broadcast_message(string message, int sender_id);
  */
 void broadcast_message(int num, int sender_id);
 
+/**
+ * @brief Broadcast a number to all clients except the sender int the same channel
+ * 
+ * @param num 
+ * @param sender_id  
+ */
+void broadcast_message(string name, string text, int color, int sender_id);
 
 /**
  * @brief Send message to a client
@@ -95,8 +102,28 @@ void broadcast_message(int num, int sender_id);
  * @param id 
  * @param message 
  */
-void send_message(int id, string message);
+void send_message_as_server(int id, string message);
 
+/**
+ * @brief Send message to a client with length information
+ * 
+ * @param name
+ * @param text
+ * @param color
+ * @param socket 
+ */
+void send_whole_message(string name, string text, int color, int socket);
+
+/**
+ * @brief Receive message from a client checking for length information
+ * 
+ * @param outBuffer buffer to store the message
+ * @param bufferSize size of the buffer
+ * @param socket 
+ * @return true read successfully
+ * @return false read failed
+ */
+bool recv_whole_message(char *outBuffer, int bufferSize, int socket);
 
 /**
  * @brief End connection with a client
@@ -348,6 +375,22 @@ void broadcast_message(string message, int sender_id)
 	}		
 }
 
+void broadcast_message(string name, string text, int color, int sender_id)
+{
+    // Get client channel
+    int index = get_client_index(sender_id);
+    string channel = clients[index].channel;
+    
+    // Send msg to clients from same channel
+    for(int i = 0; i < clients.size(); i++)
+    {
+        if(clients[i].id != sender_id && clients[i].channel == channel)
+        {
+            send_whole_message(name, text, color, clients[i].socketFd);
+        }
+    }		
+}
+
 // Broadcast a number to all clients except the sender
 void broadcast_message(int num, int sender_id)
 {
@@ -372,7 +415,7 @@ bool authAdmin(int id)
 
 	if(channels[channel_index].admin != id)
 	{
-		send_message(id, "You are not the admin of this channel.");
+		send_message_as_server(id, "You are not the admin of this channel.");
 		return false;
 	}
 
@@ -384,7 +427,7 @@ void mute(int callerId, string targetName)
 	int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
@@ -393,18 +436,18 @@ void mute(int callerId, string targetName)
 
 	if(clients[callerIndex].channel != clients[targetIndex].channel)
 	{
-		send_message(callerId, "No user found with that name.");
+		send_message_as_server(callerId, "No user found with that name.");
 	}
 	else
 	{
 		if(clients[targetIndex].isMute)
 		{
-			send_message(callerId, "User is already muted.");
+			send_message_as_server(callerId, "User is already muted.");
 		}
 		else
 		{
 			clients[targetIndex].isMute = true;
-			send_message(callerId, "User muted.");
+			send_message_as_server(callerId, "User muted.");
 		}
 	}
 }
@@ -414,7 +457,7 @@ void unmute(int callerId, string targetName)
 	int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
@@ -423,18 +466,18 @@ void unmute(int callerId, string targetName)
 
 	if(clients[callerIndex].channel != clients[targetIndex].channel)
 	{
-		send_message(callerId, "No user found with that name.");
+		send_message_as_server(callerId, "No user found with that name.");
 	}
 	else
 	{
 		if(!clients[targetIndex].isMute)
 		{
-			send_message(callerId, "User is already unmuted.");
+			send_message_as_server(callerId, "User is already unmuted.");
 		}
 		else
 		{
 			clients[targetIndex].isMute = false;
-			send_message(callerId, "User unmuted.");
+			send_message_as_server(callerId, "User unmuted.");
 		}
 	}
 }
@@ -447,7 +490,7 @@ void whois(int callerId, string targetName)
     int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
@@ -457,7 +500,7 @@ void whois(int callerId, string targetName)
     // Só mostra informações de usuários do canal do admin
     if(clients[targetIndex].channel != clients[callerIndex].channel)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
@@ -470,7 +513,7 @@ void whois(int callerId, string targetName)
     message += "\nPort: ";
     message += to_string(ntohs(clients[targetIndex].address.sin_port));
 
-    send_message(callerId, message);
+    send_message_as_server(callerId, message);
 }
 
 void kick(int callerId, string targetName)
@@ -481,7 +524,7 @@ void kick(int callerId, string targetName)
     int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
@@ -491,18 +534,19 @@ void kick(int callerId, string targetName)
     // Só pode expulsar de usuários do canal do admin
     if(clients[targetIndex].channel != clients[callerIndex].channel)
     {
-        send_message(callerId, "No user found with that name.");
+        send_message_as_server(callerId, "No user found with that name.");
         return;
     }
 
-    send_message(targetId, "You were kicked from the channel.");
+    send_message_as_server(targetId, "You were kicked from the channel.");
     end_connection(targetId);
 
     string message = "User " + clients[targetIndex].name + " was kicked from the channel.";
-    broadcast_message("Server", callerId);
+    /*broadcast_message("Server", callerId);
     broadcast_message(0, callerId);
-    broadcast_message(message, callerId);
-    send_message(callerId, message);
+    broadcast_message(message, callerId);*/
+    broadcast_message("Server", message, 0, callerId);
+    send_message_as_server(callerId, message);
 }
 
 void end_connection(int id)
@@ -527,9 +571,8 @@ void handle_client(int client_socket, int id)
 {
 	char name[MAX_LEN], str[BUFFER_SIZE], channel[MAX_LEN];
 
-    recv(client_socket, name, sizeof(name),0);
+    recv_whole_message(name, sizeof(name), client_socket);
     check_name(id, name);
-
 
 	/*
     recv(client_socket, channel, sizeof(channel), 0);
@@ -538,29 +581,28 @@ void handle_client(int client_socket, int id)
 
 	// Display welcome message
 	string welcome_message = string(name) + string(" has joined");
-	broadcast_message("#NULL", id);	
+	/*broadcast_message("#NULL", id);	
 	broadcast_message(id, id);								
-	broadcast_message(welcome_message, id);	
+	broadcast_message(welcome_message, id);	*/
+    broadcast_message("#NULL", welcome_message, id, id);
 	shared_print(color(id) + welcome_message + def_col);
 
 	int client_index = get_client_index(id);
 	
 	while(!clients[client_index].endFlag)
 	{
-		int bytes_received = recv(client_socket, str, sizeof(str), 0);
+		bool got_message = recv_whole_message(str, sizeof(str), client_socket);
 		
-		if(bytes_received <= 0) {
-            // Lost connection
-            if(bytes_received == 0)
-            {
-                string message = string(name) + string(" has left");		
-                broadcast_message("#NULL", id);			
-                broadcast_message(id, id);						
-                broadcast_message(message, id);
-                shared_print(color(id) + message + def_col);
+		if(!got_message) {
+            string message = string(name) + string(" has left");		
+            /*broadcast_message("#NULL", id);			
+            broadcast_message(id, id);						
+            broadcast_message(message, id);*/
+            broadcast_message("#NULL", message, id, id);
+            shared_print(color(id) + message + def_col);
 
-                end_connection(id);
-            }
+            end_connection(id);
+
 			continue;
         }
         
@@ -571,9 +613,10 @@ void handle_client(int client_socket, int id)
 			{
 				// Display leaving message
 				string message = string(name) + string(" has left");		
-				broadcast_message("#NULL", id);			
+				/*broadcast_message("#NULL", id);			
 				broadcast_message(id, id);						
-				broadcast_message(message, id);
+				broadcast_message(message, id);*/
+                broadcast_message("#NULL", message, id, id);
 				shared_print(color(id) + message + def_col);
 				end_connection(id);							
 				continue;
@@ -581,7 +624,7 @@ void handle_client(int client_socket, int id)
 
 			if(strcmp(str, "/ping") == 0)
 			{
-				send_message(id, "pong");
+				send_message_as_server(id, "pong");
 				continue;
 			}
 
@@ -608,14 +651,15 @@ void handle_client(int client_socket, int id)
 				string new_channel = string(str).substr(6);
 				if(!is_valid_channel_name(new_channel))
 				{
-					send_message(id, "Invalid channel name");
+					send_message_as_server(id, "Invalid channel name");
 					continue;
 				}
 				set_channel(id, (char *)new_channel.c_str());
 				string welcome_message = string(name) + string(" has joined");
-				broadcast_message("#NULL", id);	
+				/*broadcast_message("#NULL", id);	
 				broadcast_message(id, id);								
-				broadcast_message(welcome_message, id);	
+				broadcast_message(welcome_message, id);	*/
+                broadcast_message("#NULL", welcome_message, id, id);
 				shared_print(color(id) + welcome_message + def_col);
 				continue;
 			}
@@ -624,19 +668,19 @@ void handle_client(int client_socket, int id)
 			{
 				if(string(str).length() < 10)
 				{
-					send_message(id, "Invalid command");
+					send_message_as_server(id, "Invalid command");
 					continue;
 				}
 
 				string new_name = string(str).substr(10);
 				if(new_name.length() > 50)
 				{
-					send_message(id, "Name too long");
+					send_message_as_server(id, "Name too long");
 					continue;
 				}
 				if(exisiting_name(new_name) != -1)
 				{
-					send_message(id, "Name already taken");
+					send_message_as_server(id, "Name already taken");
 					continue;
 				}
 				set_name(id, (char *)new_name.c_str());
@@ -665,25 +709,26 @@ void handle_client(int client_socket, int id)
             }
 
 
-			send_message(client_socket, "Invalid command");
+			send_message_as_server(client_socket, "Invalid command");
 
 		}
 
 		if(clients[client_index].channel == "")
 		{
-			send_message(id, "You are not in a channel.");
+			send_message_as_server(id, "You are not in a channel.");
 			continue;
 		}
 
 		if(clients[client_index].isMute)
 		{
-			send_message(id, "You are muted.");
+			send_message_as_server(id, "You are muted.");
 			continue;
 		}
 
-		broadcast_message(string(name), id);					
+		/*broadcast_message(string(name), id);					
 		broadcast_message(id, id);		
-		broadcast_message(string(str), id);
+		broadcast_message(string(str), id);*/
+        broadcast_message(string(name), string(str), id, id);
 		shared_print(color(id) + name + " : " + def_col + str);		
 	}	
 
@@ -714,10 +759,10 @@ void check_name(int id, char name[])
         {
             string message = "#NAME_TAKEN";
             send(client_socket,message.c_str(), sizeof(message), 0);
-            char newName[MAX_LEN];
-
-            recv(client_socket, newName, sizeof(newName), 0);
-            strcpy(name, newName);
+            
+            char new_name[MAX_LEN];
+            recv_whole_message(new_name, sizeof(new_name), client_socket);
+            strcpy(name, new_name);
         }
 
     }while(1);
@@ -726,12 +771,12 @@ void check_name(int id, char name[])
 	set_name(id, name);
 }
 
-void send_message(int id, string message)
+void send_message_as_server(int id, string message)
 {
 	int index = get_client_index(id);
 	int client_socket = clients[index].socketFd;
 
-	char temp[BUFFER_SIZE];
+	/*char temp[BUFFER_SIZE];
     memset(temp, 0, sizeof(temp));
 	strcpy(temp, message.c_str());
 
@@ -739,7 +784,7 @@ void send_message(int id, string message)
 
 	// Send origin 
 	string server = "Server";
-    char server_name[MAX_LEN];
+    char server_name[BUFFER_SIZE];
     memset(server_name, 0, sizeof(server_name));
     strcpy(server_name, server.c_str());
     int server_len = strlen(server_name);
@@ -750,7 +795,9 @@ void send_message(int id, string message)
 	send(client_socket, &num, sizeof(num), 0);
 	
 	// Send msg
-	send(client_socket, temp, len, 0);
+	send(client_socket, temp, len, 0);*/
+
+    send_whole_message("Server", message, 0, client_socket);
 }
 
 
@@ -785,4 +832,57 @@ bool is_valid_channel_name(string channel_name) {
     // If nothing invalid was found the channel name is valid.
     return true;
 
+}
+
+void send_whole_message(string name, string text, int color, int socket) {
+    // Setup buffers
+    char name_buffer[BUFFER_SIZE];
+    char text_buffer[BUFFER_SIZE];
+    memset(name_buffer, 0, sizeof(name_buffer));
+    memset(text_buffer, 0, sizeof(text_buffer));
+
+    // Get name and text sizes
+    int name_size = name.length();
+    int text_size = text.length();
+
+    // Copy name and text to buffers
+    strncpy(name_buffer, name.c_str(), BUFFER_SIZE);
+    strncpy(text_buffer, text.c_str(), BUFFER_SIZE);
+
+    // Build header with name size, text size and color
+    int header[3] = {name_size, text_size, color};
+
+    // Send header
+    send(socket, header, sizeof(header), 0);
+
+    // Send name and text
+    send(socket, name_buffer, name_size, 0);
+    send(socket, text_buffer, text_size, 0);
+
+    return;
+}
+
+bool recv_whole_message(char *outBuffer, int bufferSize, int socket) {
+    // Setup buffer
+    char textBuffer[BUFFER_SIZE];
+    memset(textBuffer, 0, sizeof(textBuffer));
+
+    int bytesReceived = 0;
+
+    // Receive msg size
+    int size;
+    bytesReceived = recv(socket, &size, sizeof(size), MSG_WAITALL);
+    if(bytesReceived <= 0)
+        return false;
+
+    // Receive msg
+    bytesReceived = recv(socket, textBuffer, size, MSG_WAITALL);
+    if(bytesReceived <= 0)
+        return false;
+
+    // Copy msg to outBuffer
+    memset(outBuffer, 0, bufferSize);
+    strncpy(outBuffer, textBuffer, bufferSize);
+
+    return true;
 }
