@@ -15,14 +15,6 @@
 #define BUFFER_SIZE 4096
 #define CHANNEL_SIZE 200
 
-#define QUIT 1
-#define PING 2
-#define JOIN 3
-#define KICK 4
-#define MUTE 5
-#define UNMUTE 6
-#define WHOIS 7
-
 using namespace std;
 
 struct channel{
@@ -59,7 +51,7 @@ string color(int code);
  * @param id 
  * @param name 
  */
-void set_name(int id, char name[]);
+void set_name(int id, string name);
 
 
 /**
@@ -68,31 +60,24 @@ void set_name(int id, char name[]);
  * @param id 
  * @param channel 
  */
-void set_channel(int id, char channel[]);
+void set_channel(int id, string channel);
+
+/**
+ * @brief Leave a channel and do admin stuff
+ * 
+ * @param id
+ */
+void leave_channel(int id);
 
 void shared_print(string str, bool endLine);
 
 /**
- * @brief Broadcast message to all clients except the sender int the same channel
- * 
- * @param message 
- * @param sender_id 
- */
-void broadcast_message(string message, int sender_id);
-
-/**
  * @brief Broadcast a number to all clients except the sender int the same channel
  * 
- * @param num 
- * @param sender_id  
- */
-void broadcast_message(int num, int sender_id);
-
-/**
- * @brief Broadcast a number to all clients except the sender int the same channel
- * 
- * @param num 
- * @param sender_id  
+ * @param name
+ * @param text
+ * @param color
+ * @param sender_id
  */
 void broadcast_message(string name, string text, int color, int sender_id);
 
@@ -132,7 +117,6 @@ bool recv_whole_message(char *outBuffer, int bufferSize, int socket);
  */
 void end_connection(int id);
 
-
 /**
  * @brief Handle client's requests and messages
  * 
@@ -140,7 +124,6 @@ void end_connection(int id);
  * @param id 
  */
 void handle_client(int client_socket, int id);
-
 
 /**
  * @brief Get the index of a client in the clients vector
@@ -150,6 +133,13 @@ void handle_client(int client_socket, int id);
  */
 int get_client_index(int id);
 
+/**
+ * @brief Get the index of a channel in the channels vector
+ * 
+ * @param name 
+ * @return int 
+ */
+int get_channel_index(string name);
 
 /**
  * @brief Check if a name is already taken, while is taken, ask for a new name
@@ -157,7 +147,7 @@ int get_client_index(int id);
  * @param name 
  * @return int 
  */
-void check_name(int client_socket, char name[]);
+void check_name(int client_socket, string name);
 
 /**
  * @brief Check if a channel exists
@@ -175,8 +165,6 @@ int exisiting_channel(string channel);
  */
 int exisiting_name(string name);
 
-
-
 /**
  * @brief Check if a channel name is valid
  * 
@@ -185,6 +173,9 @@ int exisiting_name(string name);
  * @return false 
  */
 bool is_valid_channel_name(string channel_name);
+
+
+
 int main()
 {
 	// Create socket
@@ -224,12 +215,10 @@ int main()
 	int client_socket;
 	unsigned int len = sizeof(sockaddr_in);
 
-	cout << colors[NUM_COLORS-1] << "\n\t  ====== Welcome to the chat-room ======   " << endl << def_col;
+    cout << "Waiting for connections..." << endl;
 
 	while(1)
     {
-        cout << "Waiting for connections..." << endl;
-
         struct sockaddr_in client;
 
 		if((client_socket = accept(server_socket, (struct sockaddr *)&client, &len)) == -1)
@@ -252,6 +241,8 @@ int main()
             false,
             false
         });
+
+        cout << "New connection from " << inet_ntoa(client.sin_addr) << ":" << ntohs(client.sin_port) << " assigned ID " << seed << endl;
 	}
 
 	for(int i = 0; i < clients.size(); i++)
@@ -272,10 +263,11 @@ string color(int code)
 }
 
 // Set name of client
-void set_name(int id, char name[])
+void set_name(int id, string name)
 {
 	int client_index = get_client_index(id);
-	clients[client_index].name = string(name);
+	clients[client_index].name = name;
+    shared_print("User with ID " + to_string(id) + " set name to " + name, true);
 }
 
 int exisiting_channel(string channel)
@@ -289,26 +281,40 @@ int exisiting_channel(string channel)
 	return -1;
 }
 
-void set_channel(int id, char channel[])
+void set_channel(int id, string channel)
 {
-
 	// If channel does not exist, create a new channel
 	if(exisiting_channel(string(channel)) == -1)
 	{
 		struct channel new_channel;
-		new_channel.name = string(channel);
+		new_channel.name = channel;
 		new_channel.admin = id;
 		channels.push_back(new_channel);
+
+        shared_print(color(0) + "New channel " + channel + " created by " + clients[get_client_index(id)].name + def_col, true);
 	}
 
 	int client_index = get_client_index(id);
 	
 	if(client_index == -1)
-		cout << "Error in setting channel, no client found of id " << id << endl;
+		shared_print("Error in setting channel, no client found of id " + id, true);
 	else
 	{
-		cout << "Setting channel to " << channel << endl;
-		clients[client_index].channel = string(channel);
+		clients[client_index].channel = channel;
+
+        int channel_index = get_channel_index(channel);
+
+        // If channel has no admin, set client as admin
+        if(channels[channel_index].admin == -1)
+        {
+            channels[channel_index].admin = id;
+        }
+
+        // If client is the admin of the channel, send a message to the client
+        if(channels[channel_index].admin == id)
+        {
+            send_message_as_server(id, "You are the admin of this channel.");
+        }
 	}
 }
 
@@ -332,6 +338,17 @@ int get_client_index(int id)
 	return -1;
 }
 
+int get_channel_index(string name)
+{
+    for(int i = 0; i < channels.size(); i++)
+    {
+        if(channels[i].name == name)
+            return i;
+    }
+    return -1;
+
+}
+
 int get_client_by_name(string name)
 {
     for(int i = 0; i < clients.size(); i++)
@@ -341,38 +358,6 @@ int get_client_by_name(string name)
     }
 	return -1;
 
-}
-
-int get_channel_index(string name)
-{
-    for(int i = 0; i < channels.size(); i++)
-    {
-        if(channels[i].name == name)
-            return i;
-    }
-	return -1;
-
-}
-
-// Broadcast message to all clients except the sender
-void broadcast_message(string message, int sender_id)
-{
-	// Prepara msg
-	char temp[BUFFER_SIZE];
-	strcpy(temp, message.c_str());
-    
-	// Get client channel
-	int index = get_client_index(sender_id);
-    string channel = clients[index].channel;
-	
-	// Send msg to clients from same channel
-	for(int i = 0; i < clients.size(); i++)
-	{
-		if(clients[i].id != sender_id && clients[i].channel == channel)
-		{
-			send(clients[i].socketFd, temp, sizeof(temp), 0);
-		}
-	}		
 }
 
 void broadcast_message(string name, string text, int color, int sender_id)
@@ -391,23 +376,6 @@ void broadcast_message(string name, string text, int color, int sender_id)
     }		
 }
 
-// Broadcast a number to all clients except the sender
-void broadcast_message(int num, int sender_id)
-{
-	// Get client channel
-    int index = get_client_index(sender_id);
-    string channel = clients[index].channel;
-
-	// Send msg to clients from same channel
-	for(int i = 0; i < clients.size(); i++)
-	{
-		if(clients[i].id != sender_id && clients[i].channel == channel)
-		{
-			send(clients[i].socketFd, &num, sizeof(num), 0);
-		}
-	}		
-}
-
 bool authAdmin(int id)
 {
 	int client_index = get_client_index(id);
@@ -420,6 +388,34 @@ bool authAdmin(int id)
 	}
 
 	return true;
+}
+
+void join(int callerId, string channelName) {
+    if(!is_valid_channel_name(channelName))
+    {
+        send_message_as_server(callerId, "Invalid channel name");
+        return;
+    }
+
+    int callerIndex = get_client_index(callerId);
+
+    // If client is already in the channel, do nothing
+    if(clients[callerIndex].channel == channelName)
+    {
+        send_message_as_server(callerId, "You are already in this channel");
+        return;
+    }
+
+    // If client is in another channel, leave it
+    leave_channel(callerId);
+    
+    set_channel(callerId, channelName);
+
+    string welcome_message = string(clients[callerIndex].name) + string(" has joined");
+    broadcast_message("#NULL", welcome_message, callerId, callerId);
+    send_message_as_server(callerId, "You joined channel " + channelName);
+
+    shared_print(color(callerId) + welcome_message + " channel " + channelName + def_col);
 }
 
 void mute(int callerId, string targetName)
@@ -448,6 +444,7 @@ void mute(int callerId, string targetName)
 		{
 			clients[targetIndex].isMute = true;
 			send_message_as_server(callerId, "User muted.");
+            send_message_as_server(targetId, "You were muted by an admin.");
 		}
 	}
 }
@@ -478,6 +475,7 @@ void unmute(int callerId, string targetName)
 		{
 			clients[targetIndex].isMute = false;
 			send_message_as_server(callerId, "User unmuted.");
+            send_message_as_server(targetId, "You were unmuted.");
 		}
 	}
 }
@@ -542,11 +540,81 @@ void kick(int callerId, string targetName)
     end_connection(targetId);
 
     string message = "User " + clients[targetIndex].name + " was kicked from the channel.";
-    /*broadcast_message("Server", callerId);
-    broadcast_message(0, callerId);
-    broadcast_message(message, callerId);*/
+
     broadcast_message("Server", message, 0, callerId);
     send_message_as_server(callerId, message);
+}
+
+bool nickname(int callerId, string newName) {
+    if(newName.size() <= 0)
+    {
+        send_message_as_server(callerId, "Invalid command");
+        return false;
+    }
+
+    if(newName.length() > 50)
+    {
+        send_message_as_server(callerId, "Name too long");
+        return false;
+    }
+    if(exisiting_name(newName) != -1)
+    {
+        send_message_as_server(callerId, "Name already taken");
+        return false;
+    }
+
+
+    send_message_as_server(callerId, "Nickname changed to " + newName);
+    broadcast_message("Server", "User " + clients[get_client_index(callerId)].name + " changed nickname to " + newName, 0, callerId);
+
+    set_name(callerId, newName);
+
+    return true;
+}
+
+void leave_channel(int id)
+{
+    int client_index = get_client_index(id);
+    string channel = clients[client_index].channel;
+    int channel_index = get_channel_index(channel);
+
+    if(channel == "")
+        return;
+    
+    string leave_message = string(clients[client_index].name) + string(" has left");
+    broadcast_message("#NULL", leave_message, id, id);
+    shared_print(color(id) + leave_message + " channel " + channel + def_col);
+
+    clients[client_index].channel = "";
+    
+    // If client is the admin of the channel, set the next client as admin
+    if(channels[channel_index].admin == id)
+    {
+        bool found = false;
+
+        for(int j = 0; j < clients.size(); j++)
+        {
+            if(clients[j].channel == channel && clients[j].id != id)
+            {
+                channels[channel_index].admin = clients[j].id;
+                found = true;
+                
+                shared_print(color(0) + "New admin of channel " + channel + " is " + clients[j].name + def_col, true);
+                send_message_as_server(clients[j].id, "You are now the admin of this channel.");
+                broadcast_message("Server", "User " + clients[j].name + " is now the admin of this channel.", 0, clients[j].id);
+
+                break;
+            }
+        }
+
+        // If no other client was found, delete the channel
+        if(!found)
+        {
+            channels.erase(channels.begin() + channel_index);
+            shared_print(color(0) + "Channel " + channel + " deleted because there are no more users" + def_col, true);
+        }
+    }
+
 }
 
 void end_connection(int id)
@@ -561,6 +629,10 @@ void end_connection(int id)
 
             shutdown(clients[i].socketFd, SHUT_RDWR);
             close(clients[i].socketFd);
+
+            leave_channel(id);
+
+            shared_print("Connection with user ID " + to_string(clients[i].id) + " closed", true);
 			
             break;
 		}
@@ -572,20 +644,7 @@ void handle_client(int client_socket, int id)
 	char name[MAX_LEN], str[BUFFER_SIZE], channel[MAX_LEN];
 
     recv_whole_message(name, sizeof(name), client_socket);
-    check_name(id, name);
-
-	/*
-    recv(client_socket, channel, sizeof(channel), 0);
-    set_channel(id, channel);
-*/
-
-	// Display welcome message
-	string welcome_message = string(name) + string(" has joined");
-	/*broadcast_message("#NULL", id);	
-	broadcast_message(id, id);								
-	broadcast_message(welcome_message, id);	*/
-    broadcast_message("#NULL", welcome_message, id, id);
-	shared_print(color(id) + welcome_message + def_col);
+    check_name(id, string(name));
 
 	int client_index = get_client_index(id);
 	
@@ -594,13 +653,6 @@ void handle_client(int client_socket, int id)
 		bool got_message = recv_whole_message(str, sizeof(str), client_socket);
 		
 		if(!got_message) {
-            string message = string(name) + string(" has left");		
-            /*broadcast_message("#NULL", id);			
-            broadcast_message(id, id);						
-            broadcast_message(message, id);*/
-            broadcast_message("#NULL", message, id, id);
-            shared_print(color(id) + message + def_col);
-
             end_connection(id);
 
 			continue;
@@ -611,82 +663,54 @@ void handle_client(int client_socket, int id)
 
 			if(strcmp(str, "/quit") == 0)
 			{
-				// Display leaving message
-				string message = string(name) + string(" has left");		
-				/*broadcast_message("#NULL", id);			
-				broadcast_message(id, id);						
-				broadcast_message(message, id);*/
-                broadcast_message("#NULL", message, id, id);
-				shared_print(color(id) + message + def_col);
 				end_connection(id);							
-				continue;
+				
+                continue;
 			}
 
 			if(strcmp(str, "/ping") == 0)
 			{
-				send_message_as_server(id, "pong");
+				send_message_as_server(id, "Pong!");
+
 				continue;
 			}
 
 			if(string(str).substr(0,5) == "/mute")
 			{
-				if(!authAdmin(id))
-					continue;
+                string mute_name = string(str).substr(6);
 
-				mute(id, string(str).substr(6));
-				continue;
+				mute(id, mute_name);
+				
+                continue;
 			}
 
 			if(string(str).substr(0,7) == "/unmute")
 			{
-				if(!authAdmin(id))
-					continue;
+                string unmute_name = string(str).substr(8);
 
-				unmute(id, string(str).substr(8));
-				continue;
+				unmute(id, unmute_name);
+                
+                continue;
 			}
 
 			if(string(str).substr(0,5) == "/join")
 			{
-				string new_channel = string(str).substr(6);
-				if(!is_valid_channel_name(new_channel))
-				{
-					send_message_as_server(id, "Invalid channel name");
-					continue;
-				}
-				set_channel(id, (char *)new_channel.c_str());
-				string welcome_message = string(name) + string(" has joined");
-				/*broadcast_message("#NULL", id);	
-				broadcast_message(id, id);								
-				broadcast_message(welcome_message, id);	*/
-                broadcast_message("#NULL", welcome_message, id, id);
-				shared_print(color(id) + welcome_message + def_col);
+                string channel_name = string(str).substr(6);
+
+                join(id, channel_name);
+				
 				continue;
 			}
 
 			if(string(str).substr(0,9) == "/nickname")
 			{
-				if(string(str).length() < 10)
-				{
-					send_message_as_server(id, "Invalid command");
-					continue;
-				}
-
 				string new_name = string(str).substr(10);
-				if(new_name.length() > 50)
-				{
-					send_message_as_server(id, "Name too long");
-					continue;
-				}
-				if(exisiting_name(new_name) != -1)
-				{
-					send_message_as_server(id, "Name already taken");
-					continue;
-				}
-				set_name(id, (char *)new_name.c_str());
-				
-				strcpy(name, new_name.c_str());
-				
+
+                bool success = nickname(id, new_name);
+				if(success) {
+                    strcpy(name, new_name.c_str());
+                }
+
 				continue;
 			}
 
@@ -709,8 +733,8 @@ void handle_client(int client_socket, int id)
             }
 
 
-			send_message_as_server(client_socket, "Invalid command");
-
+			send_message_as_server(id, "Invalid command");
+            continue;    
 		}
 
 		if(clients[client_index].channel == "")
@@ -725,11 +749,7 @@ void handle_client(int client_socket, int id)
 			continue;
 		}
 
-		/*broadcast_message(string(name), id);					
-		broadcast_message(id, id);		
-		broadcast_message(string(str), id);*/
         broadcast_message(string(name), string(str), id, id);
-		shared_print(color(id) + name + " : " + def_col + str);		
 	}	
 
     // Clean up
@@ -745,29 +765,36 @@ void handle_client(int client_socket, int id)
     return;
 }
 
-void check_name(int id, char name[])
+void check_name(int id, string name)
 {
 	int client_index = get_client_index(id);
 	int client_socket = clients[client_index].socketFd; 
 
     do{
-        if(exisiting_name(string(name)) == -1)
+        if(exisiting_name(name) == -1)
 		{
 			break;
 		}
         else
         {
             string message = "#NAME_TAKEN";
-            send(client_socket,message.c_str(), sizeof(message), 0);
+            int length = message.size();
+            send(client_socket, &length, sizeof(length), 0);
+            send(client_socket,message.c_str(), length, 0);
             
             char new_name[MAX_LEN];
             recv_whole_message(new_name, sizeof(new_name), client_socket);
-            strcpy(name, new_name);
+            name = string(new_name);
         }
 
     }while(1);
 
-    send(client_socket, "#NAME_OK", sizeof("#NAME_OK"), 0);
+    string message = "#NAME_OK";
+    int length = message.size();
+    send(client_socket, &length, sizeof(length), 0);
+    send(client_socket, message.c_str(), length, 0);
+    send(client_socket, &id, sizeof(id), 0);
+
 	set_name(id, name);
 }
 
@@ -775,27 +802,6 @@ void send_message_as_server(int id, string message)
 {
 	int index = get_client_index(id);
 	int client_socket = clients[index].socketFd;
-
-	/*char temp[BUFFER_SIZE];
-    memset(temp, 0, sizeof(temp));
-	strcpy(temp, message.c_str());
-
-    int len = strlen(temp);
-
-	// Send origin 
-	string server = "Server";
-    char server_name[BUFFER_SIZE];
-    memset(server_name, 0, sizeof(server_name));
-    strcpy(server_name, server.c_str());
-    int server_len = strlen(server_name);
-	send(client_socket, server_name, server_len, 0);
-	
-	// Send msg color
-	int num = 0;
-	send(client_socket, &num, sizeof(num), 0);
-	
-	// Send msg
-	send(client_socket, temp, len, 0);*/
 
     send_whole_message("Server", message, 0, client_socket);
 }

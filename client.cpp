@@ -20,6 +20,7 @@ using namespace std;
 bool exit_flag = false;
 thread t_send, t_recv;
 int client_socket;
+int client_id;
 string def_col = "\033[0m";
 string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
 
@@ -116,26 +117,31 @@ int main()
 
         //Check if name is already taken
         char response[BUFFER_SIZE];
-        recv(client_socket, response, sizeof(response), 0);
-    	fflush(stdout);
+        memset(response, 0, sizeof(response));
+        int length;
+        recv(client_socket, &length, sizeof(length), MSG_WAITALL);
+        recv(client_socket, response, length, MSG_WAITALL);
+    	
+        fflush(stdout);
 
-        if(strcmp(response, "#NAME_TAKEN") == 0){
+        if(strcmp(response, "#NAME_TAKEN") == 0) {
             cout << "Name already taken. Please choose another name." << endl;
             continue;
         }
-        else{
+        else if(strcmp(response, "#NAME_OK") == 0) {
+            // Receive client id
+            recv(client_socket, &client_id, sizeof(client_id), MSG_WAITALL);
+
             cout << "Name accepted." << endl;
+
             break;
+        }
+        else {
+            cout << "Error: " << response << endl;
+            exit(-1);
         }
     }
 
-	// Channel selection 
-
-  /*  cout << "Enter the channel name: ";
-    char channel[MAX_LEN];
-    cin.getline(channel, MAX_LEN);
-    send(client_socket, channel, sizeof(channel), 0);
-*/
 	// Start channel logic
 
 	cout << colors[NUM_COLORS-1] << "\n\t  ====== Welcome to the chat-room ======   " << endl << def_col;
@@ -154,7 +160,7 @@ int main()
 
     close(client_socket);
 
-    cout << "Quitting..." << endl;
+    cout << "\nQuitting..." << endl;
 			
 	return 0;
 }
@@ -215,7 +221,7 @@ void send_message_worker(int client_socket)
 {
 	while(!exit_flag)
 	{
-		cout << colors[1] << "You : " << def_col;
+		cout << color(client_id) << "You : " << def_col;
 		
 		char str[BUFFER_SIZE];
 		cin.getline(str, BUFFER_SIZE);
@@ -249,27 +255,6 @@ void recv_message_worker(int client_socket)
 {
 	while(!exit_flag)
 	{
-		/*char name[BUFFER_SIZE], str[BUFFER_SIZE];
-		int color_code;
-
-        memset(name, 0, sizeof(name));
-        memset(str, 0, sizeof(str));
-
-		int bytes_received = recv(client_socket, name, sizeof(name), 0);
-
-		if(bytes_received<=0) {
-            if(bytes_received == 0) {
-                //cout << "Server disconnected." << endl;
-                exit_flag = true;
-                pthread_cancel(t_send.native_handle());
-            }
-
-			continue;
-        }
-		
-		recv(client_socket, &color_code, sizeof(color_code), 0);
-		recv(client_socket, str, sizeof(str), 0);*/
-
         message_t msg = read_message(client_socket);
         if(msg.is_null) {
             // Error or server disconnected
@@ -285,7 +270,7 @@ void recv_message_worker(int client_socket)
 		else
 			cout << color(msg.color_code) << msg.text << endl;
 		
-		cout << colors[1] << "You : " << def_col;
+		cout << color(client_id) << "You : " << def_col;
 
 		fflush(stdout);
 	}	

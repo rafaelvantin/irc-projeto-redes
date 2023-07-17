@@ -4,6 +4,6 @@
 /join <Channel name> to join in a channel
 /kick <userName> Close the connection of a user [Only adms]
 /mute <userName> Mute a user [Only adms]
-/unMute <userName> unMute a user [Only adms]
+/unmute <userName> unMute a user [Only adms]
 /whois <userName> get the ip of a user
 /nickname <newName>
