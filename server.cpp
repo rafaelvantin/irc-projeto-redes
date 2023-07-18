@@ -145,9 +145,9 @@ int get_channel_index(string name);
  * @brief Check if a name is already taken, while is taken, ask for a new name
  * 
  * @param name 
- * @return int 
+ * @return string 
  */
-void check_name(int client_socket, string name);
+string check_name(int client_socket, string name);
 
 /**
  * @brief Check if a channel exists
@@ -652,7 +652,8 @@ void handle_client(int client_socket, int id)
 	char name[MAX_LEN], str[BUFFER_SIZE], channel[MAX_LEN];
 
     recv_whole_message(name, sizeof(name), client_socket);
-    check_name(id, string(name));
+    string newName = check_name(id, string(name));
+    strcpy(name, newName.c_str());
 
 	int client_index = get_client_index(id);
 	
@@ -815,7 +816,7 @@ void handle_client(int client_socket, int id)
     return;
 }
 
-void check_name(int id, string name)
+string check_name(int id, string name)
 {
 	int client_index = get_client_index(id);
 	int client_socket = clients[client_index].socketFd; 
@@ -846,6 +847,8 @@ void check_name(int id, string name)
     send(client_socket, &id, sizeof(id), 0);
 
 	set_name(id, name);
+
+    return name;
 }
 
 void send_message_as_server(int id, string message)

@@ -15,4 +15,7 @@ O protocolo IRC tem sido desenvolvido em sistemas utilizando o protocolo TCP/IP 
 
 ## Procedimentos de compilação e execução
 
-Para compilar o projeto, basta executar o comando `make` na pasta raiz do projeto. Para executar o servidor, basta executar o comando `./server` na pasta raiz do projeto. Para executar o cliente, basta executar o comando `./client` na pasta raiz do projeto.
+Para compilar o projeto, basta executar o comando `make` na pasta raiz do projeto. Para executar o servidor, basta executar o comando `./bin/server` na pasta raiz do projeto. Para executar o cliente, basta executar o comando `./bin/client` na pasta raiz do projeto.
+
+## Vídeo de demonstração
+Para assistir ao vídeo de demonstração e explicação do projeto, basta acessar o link: (https://youtu.be/of5jOoSiWB0)[https://youtu.be/of5jOoSiWB0]
