@@ -420,6 +420,10 @@ void join(int callerId, string channelName) {
 
 void mute(int callerId, string targetName)
 {
+
+    if(!authAdmin(callerId))
+        return;
+
 	int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
@@ -451,6 +455,10 @@ void mute(int callerId, string targetName)
 
 void unmute(int callerId, string targetName)
 {
+
+    if(!authAdmin(callerId))
+        return;
+
 	int targetId = get_client_by_name(targetName);
     if(targetId == -1)
     {
@@ -632,7 +640,7 @@ void end_connection(int id)
 
             leave_channel(id);
 
-            shared_print("Connection with user ID " + to_string(clients[i].id) + " closed", true);
+            //shared_print("Connection with user ID " + to_string(clients[i].id) + " closed", true);
 			
             break;
 		}
@@ -677,6 +685,13 @@ void handle_client(int client_socket, int id)
 
 			if(string(str).substr(0,5) == "/mute")
 			{
+
+                if(string(str).length() <= 6)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
                 string mute_name = string(str).substr(6);
 
 				mute(id, mute_name);
@@ -686,6 +701,13 @@ void handle_client(int client_socket, int id)
 
 			if(string(str).substr(0,7) == "/unmute")
 			{
+
+                if(string(str).length() <= 8)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
                 string unmute_name = string(str).substr(8);
 
 				unmute(id, unmute_name);
@@ -695,6 +717,13 @@ void handle_client(int client_socket, int id)
 
 			if(string(str).substr(0,5) == "/join")
 			{
+
+                if(string(str).length() <= 6)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
                 string channel_name = string(str).substr(6);
 
                 join(id, channel_name);
@@ -704,6 +733,13 @@ void handle_client(int client_socket, int id)
 
 			if(string(str).substr(0,9) == "/nickname")
 			{
+
+                if(string(str).length() <= 10)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
 				string new_name = string(str).substr(10);
 
                 bool success = nickname(id, new_name);
@@ -716,6 +752,13 @@ void handle_client(int client_socket, int id)
 
             if(string(str).substr(0,6) == "/whois")
             {
+
+                if(string(str).length() <= 7)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
                 string whois_name = string(str).substr(7);
                 
                 whois(id, whois_name);
@@ -725,6 +768,13 @@ void handle_client(int client_socket, int id)
 
             if(string(str).substr(0,5) == "/kick")
             {
+
+                if(string(str).length() <= 6)
+                {
+                    send_message_as_server(id, "Invalid command");
+                    continue;
+                }
+
                 string kick_name = string(str).substr(6);
                 
                 kick(id, kick_name);

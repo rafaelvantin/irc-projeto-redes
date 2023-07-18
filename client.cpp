@@ -244,6 +244,7 @@ void send_message_worker(int client_socket)
             continue;
 
         }
+        
         send_message(string(str), client_socket);
 	}	
 
